@@ -109,6 +109,7 @@ class xfstests(test.test):
         os_dep.command('xfs_bmap')
         os_dep.command('xfsdump')
         self.job.require_gcc()
+        self.job.setup_dep(['fio'])
 
         tarball = utils.unmap_url(self.bindir, tarball, self.tmpdir)
         utils.extract_tarball_to_dir(tarball, self.srcdir)
