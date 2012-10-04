@@ -1,0 +1,5 @@
+DOC = '''\
+Build fio http://git.kernel.dk/?p=fio.git;a=summary
+'''
+
+job.setup_dep(['fio'])
