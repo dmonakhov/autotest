@@ -28,6 +28,12 @@ class xfstests(test.test):
                                      retain_output=True)
         lines = output.split('\n')
         result_line = lines[-1]
+        
+        log_list = ['%s.full' % test, '%s.out' % test, '%s.out.bad']
+
+        for log in log_list:
+            if os.path.exists(log):
+                utils.force_copy(log, self.resultsdir)
 
         if self.NA_RE.match(result_line):
             detail_line = lines[-3]
