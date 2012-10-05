@@ -1,7 +1,7 @@
 """
 Install server interfaces, for autotest client machine OS provisioning.
 """
-import os, xmlrpclib, logging, time
+import os, xmlrpclib, logging, time, commands, ConfigParser
 from autotest.client.shared import error
 
 
@@ -181,3 +181,138 @@ class CobblerInterface(object):
         if self.xmlrpc_url:
             system_handle = self.get_system_handle(host)[1]
             self.server.power_system(system_handle, state, self.token)
+
+class DeployConfig():
+    def __init__(self, name, cfg_file):
+        self.cfg_file = cfg_file
+        self.name = name
+
+    def parse_entry(self, entry):
+        if self.cfg.has_option(self.name, entry):
+            return self.cfg.get(self.name, entry)
+        else:
+            return self.cfg.get('global', entry)
+
+    def parse(self):
+        self.cfg = ConfigParser.ConfigParser()
+        self.cfg.read(self.cfg_file)
+
+        self.server	= self.parse_entry('server')
+        self.email	= self.parse_entry('email')
+        self.ks 	= self.parse_entry('ks')
+        self.ks_args 	= self.parse_entry('ks_args')
+        self.image 	= self.parse_entry('image')
+        self.console 	= self.parse_entry('console')
+        self.kargs 	= self.parse_entry('kargs')
+        self.extra_kargs= self.parse_entry('extra_kargs')
+
+
+class ParallelsDeployInterface(object):
+    """
+    Implements interfacing with the parallels deploy server.
+
+    @see: https://10.29.0.10
+    """
+    def __init__(self, **kwargs):
+        """
+        Sets class attributes from the keyword arguments passed to constructor.
+
+        @param **kwargs: Dict of keyword arguments passed to constructor.
+        """
+        self.xmlrpc_url = kwargs['xmlrpc_url']
+        self.user = kwargs['user']
+        self.password = kwargs['password']
+        self.fallback_profile = kwargs['fallback_profile']
+        self.num_attempts = int(kwargs.get('num_attempts', 2))
+
+    def install_host(self, host, profile='', timeout=None, num_attempts=2):
+        """
+        Install a host object with profile name defined by distro.
+
+        @param host: Autotest host object.
+        @param profile: String with cobbler profile name.
+        @param timeout: Amount of time to wait for the install.
+        @param num_attempts: Maximum number of install attempts.
+        """
+        if not self.xmlrpc_url:
+            return
+        try:
+            self.dpcfg = DeployConfig(host.hostname, self.xmlrpc_url)
+            self.dpcfg.parse()
+        except:
+            e_msg = 'Unable parse config file %s' % self.xmlrpc_url
+            raise error.HostInstallProfileError(e_msg)
+
+        installations_attempted = 0
+
+        step_time = 60
+        if timeout is None:
+            # 1 hour of timeout by default
+            timeout = 3600
+
+        if not profile:
+            profile = self.fallback_profile
+        if not profile:
+            e_msg = 'Unable to determine profile for host %s' % host.hostname
+            raise error.HostInstallProfileError(e_msg)
+
+        host.record("START", None, "install", host.hostname)
+        host.record("GOOD", None, "install.start", host.hostname)
+        logging.info("Installing machine %s with profile %s (timeout %s s)",
+                     host.hostname, profile, timeout)
+        install_start = time.time()
+        time_elapsed = 0
+        
+        server_opt = '--service %s --email %s ' % (self.dpcfg.server, self.dpcfg.email)
+        dpctl_cmd = "dpctl.py list_servers %s --name %s" % (server_opt, host.hostname)
+        (ret, output) = commands.getstatusoutput(dpctl_cmd)
+        logging.debug('cmd:%s' % dpctl_cmd)
+        logging.debug('ret:%d output:%s' % (ret, output))
+        if ret != 0:
+            e_msg = 'Unable to locate inventory id for %s' % host.hostname
+            raise error.HostInstallProfileError(e_msg)
+        invno = output
+
+        install_successful = False
+        while ((not install_successful) and
+               (installations_attempted <= self.num_attempts) and
+               (time_elapsed < timeout)):
+            
+            installations_attempted += 1
+
+            # Explicitly reboot host and put it to known state
+            host.hardreset(wait=False)
+
+            attribute="--attribute='kargs=ks=%s %s %s %s %s' " % (
+                self.dpcfg.ks, self.dpcfg.ks_args, self.dpcfg.console,
+                self.dpcfg.kargs, self.dpcfg.extra_kargs)
+
+            dpctl_cmd = "dpctl.py deploy_image %s -i %s -I %s %s --force" % (
+                server_opt, self.dpcfg.image, invno, attribute)
+            (ret, output) = commands.getstatusoutput(dpctl_cmd)
+            logging.debug('cmd:%s' % dpctl_cmd)
+            logging.debug('ret:%d output:%s' % (ret, output))
+            if ret != 0:
+                install_successful = False
+            else:
+                install_successful = True
+
+            if install_successful:
+                logging.debug('Host %s installation successful', host.hostname)
+                break
+            else:
+                logging.info('Host %s installation resulted in different '
+                             'profile', host.hostname)
+
+            time_elapsed = time.time() - install_start
+
+        if not install_successful:
+            e_msg = 'Host %s install timed out' % host.hostname
+            host.record("END FAIL", None, "install", e_msg)
+            raise error.HostInstallTimeoutError(e_msg)
+
+        host.record("END GOOD", None, "install", host.hostname)
+        time_elapsed = time.time() - install_start
+        logging.info("Machine %s installed successfuly after %d s (%d min)",
+                     host.hostname, time_elapsed, time_elapsed/60)
+
