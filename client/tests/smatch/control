@@ -1,0 +1,17 @@
+NAME='Smatch Kernel Test'
+EXPERIMENTAL='True'
+TIME='MEDIUM'
+TEST_TYPE='client'
+TEST_CATEGORY='Functional'
+TEST_CLASS='Kernel'
+AUTHOR='Dmitry Monakhov <dmonakhov@openvz.org>'
+DOC='''\
+Smatch -- The Source Matcher, Official repo git://repo.or.cz/smatch.git
+Kernel usage example:
+       make C=1 CHECK="/path/to/smatch --full-path -p=kernel" | tee warns.txt
+After the compile finishes logs stored to smatch_log and smatch_error
+key values = [ 'warning_count', 'error_count' ]
+'''
+
+job.run_test('smatch', base_tree = '3.6')
+
