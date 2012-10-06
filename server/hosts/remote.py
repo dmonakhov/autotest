@@ -48,7 +48,8 @@ class RemoteHost(base_classes.Host):
 
     VAR_LOG_MESSAGES_PATHS = ["/var/log/messages", "/var/log/syslog"]
 
-    INSTALL_SERVER_MAPPING = {'cobbler': install_server.CobblerInterface}
+    INSTALL_SERVER_MAPPING = {'cobbler': install_server.CobblerInterface,
+                              'pdeploy' : install_server.ParallelsDeployInterface}
 
     def _initialize(self, hostname, autodir=None, profile='',
                     *args, **dargs):

@@ -182,6 +182,22 @@ class Host(object):
             return None
         return boot_id
 
+    def get_system_id(self, timeout=60):
+        """ Get a unique ID associated with the current system installation.
+
+
+        @param timeout The number of seconds to wait before timing out.
+
+        @return A string guid assigned during system instalation or None if not available."""
+        SYSTEM_ID_FILE = '/setup_info'
+        NO_ID_MSG = 'no setup_info_id available'
+        cmd = 'if [ -f %r ]; then . %r 2> /dev/null; echo $guid; else echo %r; fi' % (
+                SYSTEM_ID_FILE, SYSTEM_ID_FILE, NO_ID_MSG)
+        system_id = self.run(cmd, timeout=timeout).stdout.strip()
+        if system_id == NO_ID_MSG:
+            return None
+        return system_id
+
 
     def wait_up(self, timeout=None):
         raise NotImplementedError('Wait up not implemented!')
